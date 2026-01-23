@@ -1,0 +1,7 @@
+{
+  "name": "Copy of  Aftras crm 1",
+  "description": "A high-end CRM with strict role-based access control, featuring separate dashboards for Admins, Agents, and Supervisors with read-only capabilities.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

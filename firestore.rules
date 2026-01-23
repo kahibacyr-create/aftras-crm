@@ -1,0 +1,85 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // --- FONCTIONS DE SÉCURITÉ ---
+    
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function getUserData() {
+      // Utilisation de exists() pour éviter une erreur si le profil n'est pas encore créé
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid)) 
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data 
+        : null;
+    }
+
+    function hasRole(role) {
+      let data = getUserData();
+      return isSignedIn() && data != null && data.role == role;
+    }
+
+    function isOwner(agentId) {
+      return isSignedIn() && request.auth.uid == agentId;
+    }
+
+    // --- RÈGLES DES COLLECTIONS ---
+
+    // Paramètres : Lecture publique pour le logo/nom sur l'accueil
+    match /settings/{configId} {
+      allow read: if true;
+      allow write: if hasRole('ADMIN');
+    }
+
+    // Utilisateurs : Lecture par tout membre connecté, gestion par Admin
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn(); // Permettre la création du profil lors du signup
+      allow update: if hasRole('ADMIN') || request.auth.uid == userId;
+      allow delete: if hasRole('ADMIN');
+    }
+
+    // Prospects : Admin/Superviseur voient tout, l'Agent voit les siens
+    match /prospects/{prospectId} {
+      allow read: if hasRole('ADMIN') || hasRole('SUPERVISOR') || isOwner(resource.data.agentId);
+      allow create: if isSignedIn();
+      allow update, delete: if hasRole('ADMIN') || isOwner(resource.data.agentId);
+    }
+
+    // Clients
+    match /clients/{clientId} {
+      allow read: if hasRole('ADMIN') || hasRole('SUPERVISOR') || isOwner(resource.data.agentId);
+      allow create: if isSignedIn();
+      allow update: if hasRole('ADMIN') || isOwner(resource.data.agentId);
+      allow delete: if hasRole('ADMIN');
+    }
+
+    // Ventes
+    match /sales/{saleId} {
+      allow read: if hasRole('ADMIN') || hasRole('SUPERVISOR') || isOwner(resource.data.agentId);
+      allow create, update, delete: if hasRole('ADMIN');
+    }
+
+    // Notifications
+    match /notifications/{notifId} {
+      allow read: if isSignedIn() && (hasRole('ADMIN') || isOwner(resource.data.userId));
+      allow create: if hasRole('ADMIN');
+      allow update: if isSignedIn() && isOwner(resource.data.userId);
+      allow delete: if hasRole('ADMIN');
+    }
+
+    // Codes d'accès : Lecture publique pour vérification signup
+    match /access_codes/{codeId} {
+      allow read: if true;
+      allow write: if hasRole('ADMIN');
+    }
+
+    // Leads entrants (Public)
+    match /remote_prospects/{leadId} {
+      allow create: if true;
+      allow read, update, delete: if hasRole('ADMIN') || isOwner(resource.data.agentId);
+    }
+  }
+}
